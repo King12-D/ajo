@@ -1,22 +1,32 @@
-import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js'
-import * as anchor from '@coral-xyz/anchor'
+import {
+  Connection,
+  PublicKey,
+  Transaction,
+  SystemProgram,
+  Keypair,
+} from "@solana/web3.js";
+// import * as anchor from '@coral-xyz/anchor'
 // import { Ajo } from '@/target/types/ajo' // Auto-generated after `anchor build`
 
-const PROGRAM_ID = new PublicKey('8WazH2EKrEzrwWwzh4KABve62CtQqKzR25WPa9WDbF3g')
+const PROGRAM_ID = new PublicKey(
+  "8WazH2EKrEzrwWwzh4KABve62CtQqKzR25WPa9WDbF3g",
+);
 
 export const connection = new Connection(
-  process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com',
-  'confirmed'
-)
+  process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.devnet.solana.com",
+  "confirmed",
+);
 
 /**
  * Derives the PDA for a given trader's Ajo profile.
  */
-export function getTraderProfilePDA(traderPubkey: PublicKey): [PublicKey, number] {
+export function getTraderProfilePDA(
+  traderPubkey: PublicKey,
+): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from('profile'), traderPubkey.toBuffer()],
-    PROGRAM_ID
-  )
+    [Buffer.from("profile"), traderPubkey.toBuffer()],
+    PROGRAM_ID,
+  );
 }
 
 /**
@@ -28,13 +38,13 @@ export async function updateScoreOnChain(
   score: number,
   consistency: number,
   revenueTrend: number,
-  expenseDiscipline: number
+  expenseDiscipline: number,
 ) {
   // Initialize anchor provider with backend wallet
   // const wallet = new anchor.Wallet(Keypair.fromSecretKey(...))
   // const provider = new anchor.AnchorProvider(connection, wallet, {})
   // const program = new anchor.Program(idl, PROGRAM_ID, provider)
-  
+
   // return await program.methods
   //   .updateScore(score, consistency, revenueTrend, expenseDiscipline)
   //   .accounts({
@@ -42,7 +52,9 @@ export async function updateScoreOnChain(
   //     oracle: wallet.publicKey,
   //   })
   //   .rpc()
-  
-  console.log(`[Mock] Updating on-chain score for ${traderAddress} to ${score}`)
-  return "mock_tx_signature"
+
+  console.log(
+    `[Mock] Updating on-chain score for ${traderAddress} to ${score}`,
+  );
+  return "mock_tx_signature";
 }
