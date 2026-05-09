@@ -7,7 +7,8 @@ import { WalletModalProvider } from '@solana/wallet-adapter-react-ui'
 import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets'
 import { clusterApiUrl } from '@solana/web3.js'
 
-require('@solana/wallet-adapter-react-ui/styles.css')
+// Next.js Turbopack prefers ES6 imports for CSS rather than require()
+import '@solana/wallet-adapter-react-ui/styles.css'
 
 interface AjoProviderProps {
   children: ReactNode
