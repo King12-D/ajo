@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { computeScore } from '@/lib/score'
 import { updateScoreOnChain } from '@/lib/solana'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: NextRequest) {
   try {
     const { traderAddress, entries } = await req.json()
