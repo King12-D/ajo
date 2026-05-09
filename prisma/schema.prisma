@@ -1,13 +1,38 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../lib/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Trader {
+  id            String       @id @default(cuid())
+  walletAddress String       @unique
+  createdAt     DateTime     @default(now())
+  entries       DailyEntry[]
+}
+
+model DailyEntry {
+  id         String   @id @default(cuid())
+  traderId   String
+  trader     Trader   @relation(fields: [traderId], references: [id])
+  date       String   // YYYY-MM-DD
+  revenue    Float
+  expenses   Float
+  transcript String?
+  status     String   @default("pending") // pending | confirmed
+  createdAt  DateTime @default(now())
+
+  @@unique([traderId, date])
+}
+
+model LenderQuery {
+  id            String   @id @default(cuid())
+  lenderAddress String
+  traderAddress String
+  amountSol     Float    @default(0.01)
+  txSignature   String?
+  createdAt     DateTime @default(now())
 }
