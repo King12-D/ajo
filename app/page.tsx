@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Navigation } from "@/components/Navigation";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
 import { AjoScore } from "@/components/AjoScore";
@@ -30,18 +30,18 @@ function generate30Days(): DailyEntry[] {
   for (let i = 0; i < 30; i++) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
-    const rev = Math.floor(Math.random() * 4500) + 800;
+    // Use semi-deterministic values to avoid hydration mismatch if possible, 
+    // but useEffect is the safer bet for state population.
+    const rev = 1000 + (i * 123) % 3000; 
     entries.push({
       date: d.toISOString().split("T")[0],
       revenue: rev,
-      expenses: Math.floor(rev * (0.2 + Math.random() * 0.2)),
-      status: Math.random() > 0.25 ? "confirmed" : "pending",
+      expenses: Math.floor(rev * 0.3),
+      status: i % 4 === 0 ? "pending" : "confirmed",
     });
   }
   return entries;
 }
-
-const INITIAL_ENTRIES = generate30Days();
 
 /* ── helpers ────────────────────────────────────────────────── */
 function fmt(n: number) {
@@ -60,7 +60,14 @@ function fmtDate(iso: string) {
 export default function TraderDashboard() {
   const [showRecorder, setShowRecorder] = useState(false);
   const [ajoScore, setAjoScore] = useState(742);
-  const [entries, setEntries] = useState<DailyEntry[]>(INITIAL_ENTRIES);
+  const [entries, setEntries] = useState<DailyEntry[]>([]);
+  const [mounted, setMounted] = useState(false);
+
+  // Fix hydration mismatch by populating random/mock data only after mount
+  useEffect(() => {
+    setEntries(generate30Days());
+    setMounted(true);
+  }, []);
 
   const handleRecordingComplete = (_blob: Blob, _transcript: string) => {
     const today = new Date().toISOString().split("T")[0];
@@ -79,6 +86,10 @@ export default function TraderDashboard() {
   const totalExpenses = entries.reduce((s, e) => s + e.expenses, 0);
   const netProfit = totalRevenue - totalExpenses;
   const confirmedDays = entries.filter((e) => e.status === "confirmed").length;
+
+  if (!mounted) {
+    return <div className="min-h-screen bg-background" />;
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -186,7 +197,11 @@ export default function TraderDashboard() {
                     {s.label}
                   </span>
                 </div>
-                <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+                <p
+                  className={`text-xl font-bold ${s.color}`}
+                >
+                  {s.value}
+                </p>
               </div>
             ))}
           </div>
@@ -279,7 +294,7 @@ export default function TraderDashboard() {
                       </div>
                     </div>
                   </div>
-                );
+                )
               })}
             </div>
           )}

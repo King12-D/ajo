@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Navigation } from "@/components/Navigation";
 import { AjoScore } from "@/components/AjoScore";
 import {
@@ -15,13 +15,11 @@ import {
   ArrowRight,
 } from "lucide-react";
 import {
-  LineChart,
-  Line,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
   Area,
   AreaChart,
 } from "recharts";
@@ -38,31 +36,32 @@ interface TraderProfile {
 
 function generateMockData(
   baseRev: number,
-  score: number,
 ): TraderProfile["thirtyDayData"] {
   const data = [];
   const now = new Date();
   for (let i = 29; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
-    const rev = baseRev + (Math.random() - 0.3) * (baseRev * 0.4);
+    // Deterministic mock data to avoid hydration mismatch
+    const variance = (i * 13) % 20; 
+    const rev = baseRev + (variance - 10) * (baseRev * 0.01);
     data.push({
       date: d.toLocaleDateString("en-GB", { month: "short", day: "numeric" }),
       revenue: Math.floor(rev),
-      expenses: Math.floor(rev * (0.2 + Math.random() * 0.2)),
+      expenses: Math.floor(rev * 0.25),
     });
   }
   return data;
 }
 
-const mockTraders: Record<string, TraderProfile> = {
+const MOCK_TRADERS: Record<string, TraderProfile> = {
   "8XKP3MNA": {
     walletAddress: "8xKp...3mNa",
     ajoScore: 742,
     consistency: 88,
     revenueTrend: 92,
     expenseDiscipline: 85,
-    thirtyDayData: generateMockData(2000, 742),
+    thirtyDayData: generateMockData(2000),
   },
   "7YLQ2POB": {
     walletAddress: "7yLq...2pOb",
@@ -70,7 +69,7 @@ const mockTraders: Record<string, TraderProfile> = {
     consistency: 65,
     revenueTrend: 58,
     expenseDiscipline: 72,
-    thirtyDayData: generateMockData(1200, 615),
+    thirtyDayData: generateMockData(1200),
   },
   "9ZMR4QRC": {
     walletAddress: "9zMr...4qRc",
@@ -78,7 +77,7 @@ const mockTraders: Record<string, TraderProfile> = {
     consistency: 95,
     revenueTrend: 96,
     expenseDiscipline: 93,
-    thirtyDayData: generateMockData(4500, 815),
+    thirtyDayData: generateMockData(4500),
   },
 };
 
@@ -93,15 +92,19 @@ export default function LenderDashboard() {
     "idle" | "processing" | "success"
   >("idle");
   const [scoreUnlocked, setScoreUnlocked] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleSearch = () => {
     const q = searchQuery.toUpperCase().replace(/\./g, "");
-    // Fuzzy match for the mock data
-    const foundKey = Object.keys(mockTraders).find(
+    const foundKey = Object.keys(MOCK_TRADERS).find(
       (k) => k.includes(q) || q.includes(k),
     );
     if (foundKey) {
-      setSelectedTrader(mockTraders[foundKey]);
+      setSelectedTrader(MOCK_TRADERS[foundKey]);
       setScoreUnlocked(false);
     } else {
       setSelectedTrader(null);
@@ -111,7 +114,6 @@ export default function LenderDashboard() {
 
   const handlePaymentConfirm = () => {
     setPaymentStatus("processing");
-    // Fake Solana transaction delay
     setTimeout(() => {
       setPaymentStatus("success");
       setTimeout(() => {
@@ -122,12 +124,15 @@ export default function LenderDashboard() {
     }, 2000);
   };
 
+  if (!mounted) {
+    return <div className="min-h-screen bg-background" />;
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
 
       <main className="max-w-4xl mx-auto px-4 pb-20 pt-8 space-y-8">
-        {/* ── Search Header ── */}
         <div className="text-center max-w-2xl mx-auto mb-10">
           <h1 className="text-3xl font-black text-foreground mb-3">
             Lender Portal
@@ -177,9 +182,7 @@ export default function LenderDashboard() {
 
         {selectedTrader ? (
           <div className="space-y-6 animate-fade-in-up">
-            {/* ── Top Profile Card ── */}
             <div className="glass-card rounded-2xl p-6 sm:p-8 flex flex-col md:flex-row gap-8 items-center md:items-start border border-border/60">
-              {/* Score section */}
               <div className="shrink-0 flex flex-col items-center">
                 {scoreUnlocked ? (
                   <AjoScore
@@ -199,7 +202,6 @@ export default function LenderDashboard() {
                 )}
               </div>
 
-              {/* Details section */}
               <div className="flex-1 w-full space-y-6">
                 <div className="flex items-start justify-between">
                   <div>
@@ -283,7 +285,6 @@ export default function LenderDashboard() {
               </div>
             </div>
 
-            {/* ── Chart Section (Only visible if unlocked) ── */}
             {scoreUnlocked && (
               <div
                 className="glass-card rounded-2xl p-6 sm:p-8 border border-border/60 animate-fade-in-up"
@@ -391,7 +392,6 @@ export default function LenderDashboard() {
         )}
       </main>
 
-      {/* ── Payment Modal ── */}
       {showPaymentModal && selectedTrader && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div
