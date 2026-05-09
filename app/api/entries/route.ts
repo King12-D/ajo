@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { getPrisma } from '@/lib/db'
 import { computeScore } from '@/lib/score'
 
 export const dynamic = 'force-dynamic'
@@ -9,7 +9,7 @@ const WALLET = '8xKp...3mNa' // trader's wallet (mock — replace with real auth
 /** GET /api/entries — fetch all entries + live score */
 export async function GET() {
   try {
-    let trader = await prisma.trader.findUnique({
+    let trader = await getPrisma().trader.findUnique({
       where: { walletAddress: WALLET },
       include: {
         entries: {
@@ -21,7 +21,7 @@ export async function GET() {
 
     if (!trader) {
       // Auto-create trader on first visit
-      trader = await prisma.trader.create({
+      trader = await getPrisma().trader.create({
         data: { walletAddress: WALLET },
         include: { entries: true },
       })
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Upsert trader
-    const trader = await prisma.trader.upsert({
+    const trader = await getPrisma().trader.upsert({
       where:  { walletAddress: WALLET },
       create: { walletAddress: WALLET },
       update: {},
@@ -58,14 +58,14 @@ export async function POST(req: NextRequest) {
     const today = new Date().toISOString().split('T')[0]
 
     // Upsert entry for today (only one per day)
-    const entry = await prisma.dailyEntry.upsert({
+    const entry = await getPrisma().dailyEntry.upsert({
       where: { traderId_date: { traderId: trader.id, date: today } },
       create: { traderId: trader.id, date: today, revenue, expenses, transcript, status: 'pending' },
       update: { revenue, expenses, transcript },
     })
 
     // Compute updated score
-    const allEntries = await prisma.dailyEntry.findMany({
+    const allEntries = await getPrisma().dailyEntry.findMany({
       where:   { traderId: trader.id },
       orderBy: { date: 'desc' },
       take:    30,
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
     // After 30 seconds auto-confirm today's entry (simulate on-chain confirmation)
     // In production this would be a webhook/cron
     setTimeout(async () => {
-      await prisma.dailyEntry.update({
+      await getPrisma().dailyEntry.update({
         where: { id: entry.id },
         data:  { status: 'confirmed' },
       }).catch(() => {})

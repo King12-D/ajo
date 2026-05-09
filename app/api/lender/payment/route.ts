@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { getPrisma } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     const mockTxSig = `${Math.random().toString(36).slice(2, 10).toUpperCase()}...${Math.random().toString(36).slice(2, 6).toUpperCase()}`
 
     // Log the query to DB
-    const query = await prisma.lenderQuery.create({
+    const query = await getPrisma().lenderQuery.create({
       data: {
         lenderAddress,
         traderAddress,

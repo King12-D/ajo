@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { getPrisma } from '@/lib/db'
 import { computeScore } from '@/lib/score'
 
 export const dynamic = 'force-dynamic'
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   try {
     // Match by prefix/suffix or full address (case-insensitive)
-    const trader = await prisma.trader.findFirst({
+    const trader = await getPrisma().trader.findFirst({
       where: {
         walletAddress: {
           contains: address.replace('...', ''),
