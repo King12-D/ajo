@@ -1,17 +1,16 @@
-'use client'
+"use client";
 
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { Wallet, Zap } from 'lucide-react'
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Wallet, Zap } from "lucide-react";
 
 export function Navigation() {
-  const pathname = usePathname()
-  const isLender = pathname === '/lender'
+  const pathname = usePathname();
+  const isLender = pathname === "/lender";
 
   return (
     <nav className="sticky top-0 z-40 border-b border-border/60 glass-card">
       <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
-
         {/* Logo */}
         <Link
           href="/"
@@ -30,8 +29,8 @@ export function Navigation() {
             id="nav-trader-btn"
             className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
               !isLender
-                ? 'bg-accent text-accent-foreground shadow-sm shadow-accent/30'
-                : 'text-muted-foreground hover:text-foreground'
+                ? "bg-accent text-accent-foreground shadow-sm shadow-accent/30"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Trader
@@ -41,8 +40,8 @@ export function Navigation() {
             id="nav-lender-btn"
             className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
               isLender
-                ? 'bg-accent text-accent-foreground shadow-sm shadow-accent/30'
-                : 'text-muted-foreground hover:text-foreground'
+                ? "bg-accent text-accent-foreground shadow-sm shadow-accent/30"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Lender
@@ -57,5 +56,5 @@ export function Navigation() {
         </div>
       </div>
     </nav>
-  )
+  );
 }
