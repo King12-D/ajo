@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { computeScore } from '@/lib/score'
 
+export const dynamic = 'force-dynamic'
+
 const WALLET = '8xKp...3mNa' // trader's wallet (mock — replace with real auth later)
 
 /** GET /api/entries — fetch all entries + live score */

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { computeScore } from '@/lib/score'
 
+export const dynamic = 'force-dynamic'
+
 /**
  * GET /api/lender/search?address=8xKp3mNa
  * Returns a trader's profile + score breakdown for lenders.
