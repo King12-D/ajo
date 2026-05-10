@@ -54,7 +54,7 @@ export default function TraderDashboard() {
 
   const [showRecorder, setShowRecorder] = useState(false);
   const [ajoScore, setAjoScore] = useState<ScoreBreakdown>({
-    overall: 300,
+    overall: 0,
     consistency: 0,
     revenueTrend: 0,
     expenseDiscipline: 0,
@@ -140,10 +140,18 @@ export default function TraderDashboard() {
     }).catch(console.error);
   };
 
-  const totalRevenue = (entries || []).reduce((s, e) => s + (e?.revenue || 0), 0);
-  const totalExpenses = (entries || []).reduce((s, e) => s + (e?.expenses || 0), 0);
+  const totalRevenue = (entries || []).reduce(
+    (s, e) => s + (e?.revenue || 0),
+    0,
+  );
+  const totalExpenses = (entries || []).reduce(
+    (s, e) => s + (e?.expenses || 0),
+    0,
+  );
   const netProfit = totalRevenue - totalExpenses;
-  const confirmedDays = (entries || []).filter((e) => e?.status === "confirmed").length;
+  const confirmedDays = (entries || []).filter(
+    (e) => e?.status === "confirmed",
+  ).length;
 
   if (!mounted || !ready) {
     return <div className="min-h-screen bg-background" />;
@@ -163,7 +171,8 @@ export default function TraderDashboard() {
               Build Your Financial Identity
             </h1>
             <p className="text-muted-foreground text-lg">
-              Record your daily sales with your voice and build a verifiable Ajo Score on Solana.
+              Record your daily sales with your voice and build a verifiable Ajo
+              Score on Solana.
             </p>
           </div>
           <button
@@ -174,7 +183,8 @@ export default function TraderDashboard() {
             Get Started
           </button>
           <p className="text-xs text-muted-foreground">
-            Sign in with your phone number or Google. No crypto knowledge required.
+            Sign in with your phone number or Google. No crypto knowledge
+            required.
           </p>
         </main>
       </div>
@@ -229,9 +239,15 @@ export default function TraderDashboard() {
                 {[
                   { label: "Consistency", pct: ajoScore?.consistency || 0 },
                   { label: "Revenue Trend", pct: ajoScore?.revenueTrend || 0 },
-                  { label: "Expense Discipline", pct: ajoScore?.expenseDiscipline || 0 },
+                  {
+                    label: "Expense Discipline",
+                    pct: ajoScore?.expenseDiscipline || 0,
+                  },
                 ].map((item) => (
-                  <div key={item.label} className="flex flex-col items-center gap-1">
+                  <div
+                    key={item.label}
+                    className="flex flex-col items-center gap-1"
+                  >
                     <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
                       <div
                         className="h-full bg-accent rounded-full transition-all duration-1000"
