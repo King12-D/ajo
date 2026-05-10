@@ -1,36 +1,37 @@
 "use client";
 
 import React, { ReactNode } from "react";
-import {
-  ConnectionProvider,
-  WalletProvider,
-} from "@solana/wallet-adapter-react";
-import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
-import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
-import {
-  PhantomWalletAdapter,
-  SolflareWalletAdapter,
-} from "@solana/wallet-adapter-wallets";
+import { PrivyProvider } from "@privy-io/react-auth";
+import { ConnectionProvider } from "@solana/wallet-adapter-react";
 import { clusterApiUrl } from "@solana/web3.js";
-
-// Next.js Turbopack prefers ES6 imports for CSS rather than require()
-import "@solana/wallet-adapter-react-ui/styles.css";
 
 interface AjoProviderProps {
   children: ReactNode;
 }
 
 export function AjoProvider({ children }: AjoProviderProps) {
-  const network = WalletAdapterNetwork.Mainnet;
-  const endpoint = clusterApiUrl(network);
-
-  const wallets = [new PhantomWalletAdapter(), new SolflareWalletAdapter()];
+  const endpoint = clusterApiUrl("devnet");
 
   return (
-    <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
-        <WalletModalProvider>{children}</WalletModalProvider>
-      </WalletProvider>
-    </ConnectionProvider>
+    <PrivyProvider
+      appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID || "clz...example"} 
+      config={{
+        loginMethods: ["sms", "google", "apple", "email"],
+        appearance: {
+          theme: "dark",
+          accentColor: "#d4af37", // Ajo Gold
+          showWalletLoginFirst: false,
+        },
+        embeddedWallets: {
+          solana: {
+            createOnLogin: "users-without-wallets",
+          },
+        },
+      }}
+    >
+      <ConnectionProvider endpoint={endpoint}>
+        {children}
+      </ConnectionProvider>
+    </PrivyProvider>
   );
 }

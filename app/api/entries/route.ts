@@ -4,15 +4,20 @@ import { computeScore } from '@/lib/score'
 
 export const dynamic = 'force-dynamic'
 
-const WALLET = '8xKp...3mNa' // trader's wallet (mock — replace with real auth later)
-
-/** GET /api/entries — fetch all entries + live score */
-export async function GET() {
+/** GET /api/entries — fetch all entries + live score for a specific user */
+export async function GET(req: NextRequest) {
   try {
-    // Get or create trader
+    const { searchParams } = new URL(req.url)
+    const walletAddress = searchParams.get('address')
+
+    if (!walletAddress) {
+      return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 })
+    }
+
+    // Get or create trader (Registration happens here)
     const trader = await getPrisma().trader.upsert({
-      where: { walletAddress: WALLET },
-      create: { walletAddress: WALLET },
+      where: { walletAddress },
+      create: { walletAddress },
       update: {},
       include: {
         entries: {
@@ -34,25 +39,29 @@ export async function GET() {
   }
 }
 
-/** POST /api/entries — save a new daily entry */
+/** POST /api/entries — save a new daily entry for a specific user */
 export async function POST(req: NextRequest) {
   try {
-    const { revenue, expenses, transcript } = await req.json()
+    const { address, revenue, expenses, transcript } = await req.json()
+
+    if (!address) {
+      return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 })
+    }
 
     if (typeof revenue !== 'number' || typeof expenses !== 'number') {
       return NextResponse.json({ error: 'revenue and expenses are required numbers' }, { status: 400 })
     }
 
-    // Upsert trader
+    // Sync user with DB
     const trader = await getPrisma().trader.upsert({
-      where:  { walletAddress: WALLET },
-      create: { walletAddress: WALLET },
+      where:  { walletAddress: address },
+      create: { walletAddress: address },
       update: {},
     })
 
     const today = new Date().toISOString().split('T')[0]
 
-    // Upsert entry for today (only one per day)
+    // Save entry
     const entry = await getPrisma().dailyEntry.upsert({
       where: { traderId_date: { traderId: trader.id, date: today } },
       create: { traderId: trader.id, date: today, revenue, expenses, transcript, status: 'pending' },
@@ -67,8 +76,7 @@ export async function POST(req: NextRequest) {
     })
     const score = computeScore(allEntries)
 
-    // After 30 seconds auto-confirm today's entry (simulate on-chain confirmation)
-    // In production this would be a webhook/cron
+    // Simulate on-chain confirmation
     setTimeout(async () => {
       await getPrisma().dailyEntry.update({
         where: { id: entry.id },

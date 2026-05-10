@@ -2,11 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Wallet, Zap } from "lucide-react";
+import { Wallet, Zap, LogIn, LogOut } from "lucide-react";
+import { usePrivy } from "@privy-io/react-auth";
 
 export function Navigation() {
   const pathname = usePathname();
   const isLender = pathname === "/lender";
+  const { login, logout, authenticated, user } = usePrivy();
+
+  const walletAddress = user?.wallet?.address;
+  const shortAddress = walletAddress 
+    ? `${walletAddress.slice(0, 4)}…${walletAddress.slice(-4)}`
+    : "";
 
   return (
     <nav className="sticky top-0 z-40 border-b border-border/60 glass-card">
@@ -48,11 +55,32 @@ export function Navigation() {
           </Link>
         </div>
 
-        {/* Wallet pill */}
-        <div className="hidden sm:flex items-center gap-2 bg-muted/40 border border-border/60 rounded-full px-3 py-1.5 text-xs text-muted-foreground shrink-0">
-          <Wallet className="w-3.5 h-3.5" />
-          <span className="font-mono">8xKp…3mNa</span>
-          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+        {/* Auth Actions */}
+        <div className="flex items-center gap-3">
+          {authenticated ? (
+            <div className="flex items-center gap-2">
+              <div className="hidden sm:flex items-center gap-2 bg-muted/40 border border-border/60 rounded-full px-3 py-1.5 text-xs text-muted-foreground">
+                <Wallet className="w-3.5 h-3.5" />
+                <span className="font-mono">{shortAddress}</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+              </div>
+              <button
+                onClick={logout}
+                className="p-2 hover:bg-muted rounded-full transition-colors text-muted-foreground"
+                title="Logout"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={login}
+              className="flex items-center gap-2 bg-accent text-accent-foreground px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-all shadow-lg shadow-accent/10"
+            >
+              <LogIn className="w-4 h-4" />
+              Login
+            </button>
+          )}
         </div>
       </div>
     </nav>

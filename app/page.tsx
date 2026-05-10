@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Navigation } from "@/components/Navigation";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
 import { AjoScore } from "@/components/AjoScore";
+import { usePrivy } from "@privy-io/react-auth";
 import {
   Mic,
   TrendingUp,
@@ -14,6 +15,8 @@ import {
   BarChart2,
   Wallet,
   Loader2,
+  LogIn,
+  Zap,
 } from "lucide-react";
 
 /* ── types ─────────────────────────────────────────────────── */
@@ -46,6 +49,9 @@ function fmtDate(iso: string) {
 
 /* ── component ──────────────────────────────────────────────── */
 export default function TraderDashboard() {
+  const { login, authenticated, ready, user } = usePrivy();
+  const walletAddress = user?.wallet?.address;
+
   const [showRecorder, setShowRecorder] = useState(false);
   const [ajoScore, setAjoScore] = useState<ScoreBreakdown>({
     overall: 300,
@@ -57,10 +63,12 @@ export default function TraderDashboard() {
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
 
-  // Fetch real data from the API
+  // Fetch real data for the authenticated user
   const fetchData = async () => {
+    if (!walletAddress) return;
+    setLoading(true);
     try {
-      const res = await fetch("/api/entries");
+      const res = await fetch(`/api/entries?address=${walletAddress}`);
       const data = await res.json();
       if (data.entries) setEntries(data.entries);
       if (data.score) setAjoScore(data.score);
@@ -73,10 +81,19 @@ export default function TraderDashboard() {
 
   useEffect(() => {
     setMounted(true);
-    fetchData();
   }, []);
 
+  useEffect(() => {
+    if (ready && authenticated && walletAddress) {
+      fetchData();
+    } else if (ready && !authenticated) {
+      setLoading(false);
+    }
+  }, [ready, authenticated, walletAddress]);
+
   const handleRecordingSave = async (blob: Blob) => {
+    if (!walletAddress) return;
+
     // 1. Transcribe audio
     const formData = new FormData();
     formData.append("audio", blob, "audio.webm");
@@ -98,6 +115,7 @@ export default function TraderDashboard() {
     const entryRes = await fetch("/api/entries", {
       method: "POST",
       body: JSON.stringify({
+        address: walletAddress,
         revenue: extractedData.revenue,
         expenses: extractedData.expenses,
         transcript,
@@ -107,16 +125,16 @@ export default function TraderDashboard() {
 
     // 4. Update local state
     setEntries((prev) => {
-      const filtered = prev.filter(e => e.date !== entry.date);
+      const filtered = prev.filter((e) => e.date !== entry.date);
       return [entry, ...filtered].slice(0, 30);
     });
     setAjoScore(score);
 
-    // 5. Trigger On-Chain Score Update (Oracle)
+    // 5. Trigger On-Chain Score Update
     fetch("/api/score", {
       method: "POST",
       body: JSON.stringify({
-        traderAddress: "8xKp...3mNa", // Mock for now, replace with real pubkey
+        traderAddress: walletAddress,
         entries: [entry, ...entries],
       }),
     }).catch(console.error);
@@ -127,8 +145,40 @@ export default function TraderDashboard() {
   const netProfit = totalRevenue - totalExpenses;
   const confirmedDays = (entries || []).filter((e) => e?.status === "confirmed").length;
 
-  if (!mounted) {
+  if (!mounted || !ready) {
     return <div className="min-h-screen bg-background" />;
+  }
+
+  // Welcome Screen for Unauthenticated Users
+  if (!authenticated) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <Navigation />
+        <main className="flex-1 flex flex-col items-center justify-center px-4 text-center max-w-lg mx-auto space-y-8">
+          <div className="w-24 h-24 rounded-3xl bg-accent/15 border border-accent/30 flex items-center justify-center shadow-2xl shadow-accent/10">
+            <Zap className="w-12 h-12 text-accent" />
+          </div>
+          <div className="space-y-4">
+            <h1 className="text-4xl font-black text-foreground tracking-tight">
+              Build Your Financial Identity
+            </h1>
+            <p className="text-muted-foreground text-lg">
+              Record your daily sales with your voice and build a verifiable Ajo Score on Solana.
+            </p>
+          </div>
+          <button
+            onClick={login}
+            className="w-full btn-gold-shimmer text-accent-foreground py-5 rounded-2xl font-bold text-xl flex items-center justify-center gap-3 hover:opacity-95 active:scale-[0.98] transition-all shadow-xl shadow-accent/20"
+          >
+            <LogIn className="w-6 h-6" />
+            Get Started
+          </button>
+          <p className="text-xs text-muted-foreground">
+            Sign in with your phone number or Google. No crypto knowledge required.
+          </p>
+        </main>
+      </div>
+    );
   }
 
   return (
@@ -140,18 +190,22 @@ export default function TraderDashboard() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/40 border border-border/60 rounded-full px-3 py-1.5">
             <Wallet className="w-3.5 h-3.5" />
-            <span className="font-mono">8xKp…3mNa</span>
+            <span className="font-mono">
+              {walletAddress?.slice(0, 4)}…{walletAddress?.slice(-4)}
+            </span>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-primary bg-primary/10 border border-primary/20 rounded-full px-3 py-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-            Solana Mainnet
+            Solana Devnet
           </div>
         </div>
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <Loader2 className="w-10 h-10 text-accent animate-spin" />
-            <p className="text-sm text-muted-foreground">Loading your financial identity...</p>
+            <p className="text-sm text-muted-foreground">
+              Loading your financial identity...
+            </p>
           </div>
         ) : (
           <>
@@ -227,7 +281,7 @@ export default function TraderDashboard() {
                 {
                   icon: <CheckCircle2 className="w-4 h-4 text-primary" />,
                   label: "Days Confirmed",
-                  value: `${confirmedDays} / ${entries.length || 30}`,
+                  value: `${confirmedDays} / ${entries.length || 0}`,
                   color: "text-foreground",
                 },
               ].map((s) => (
@@ -278,34 +332,59 @@ export default function TraderDashboard() {
                             <p className="text-xs font-semibold text-foreground">
                               {fmtDate(entry.date)}
                             </p>
-                            <span className={`inline-flex items-center gap-1 text-[10px] font-medium mt-1 ${
-                              entry.status === "confirmed" ? "text-primary" : "text-muted-foreground"
-                            }`}>
-                              {entry.status === "confirmed" ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                              {entry.status === "confirmed" ? "Confirmed" : "Pending"}
+                            <span
+                              className={`inline-flex items-center gap-1 text-[10px] font-medium mt-1 ${
+                                entry.status === "confirmed"
+                                  ? "text-primary"
+                                  : "text-muted-foreground"
+                              }`}
+                            >
+                              {entry.status === "confirmed" ? (
+                                <CheckCircle2 className="w-3 h-3" />
+                              ) : (
+                                <Clock className="w-3 h-3" />
+                              )}
+                              {entry.status === "confirmed"
+                                ? "Confirmed"
+                                : "Pending"}
                             </span>
                           </div>
 
                           <div className="flex gap-5 flex-1">
                             <div>
-                              <p className="text-[10px] text-muted-foreground">Revenue</p>
-                              <p className="text-sm font-bold text-primary">{fmt(entry.revenue)}</p>
+                              <p className="text-[10px] text-muted-foreground">
+                                Revenue
+                              </p>
+                              <p className="text-sm font-bold text-primary">
+                                {fmt(entry.revenue)}
+                              </p>
                             </div>
                             <div>
-                              <p className="text-[10px] text-muted-foreground">Expenses</p>
-                              <p className="text-sm font-bold text-muted-foreground">{fmt(entry.expenses)}</p>
+                              <p className="text-[10px] text-muted-foreground">
+                                Expenses
+                              </p>
+                              <p className="text-sm font-bold text-muted-foreground">
+                                {fmt(entry.expenses)}
+                              </p>
                             </div>
                           </div>
 
                           <div className="text-right">
-                            <p className="text-[10px] text-muted-foreground">Net</p>
-                            <p className={`text-sm font-bold ${isUp ? "text-accent" : "text-destructive"}`}>
-                              {isUp ? "+" : ""}{fmt(profit)}
+                            <p className="text-[10px] text-muted-foreground">
+                              Net
+                            </p>
+                            <p
+                              className={`text-sm font-bold ${
+                                isUp ? "text-accent" : "text-destructive"
+                              }`}
+                            >
+                              {isUp ? "+" : ""}
+                              {fmt(profit)}
                             </p>
                           </div>
                         </div>
                       </div>
-                    )
+                    );
                   })}
                 </div>
               )}

@@ -128,7 +128,7 @@ export function AjoScore({
         {/* Label below number */}
         <text
           x={cx}
-          y={cy + cfg.textSize.replace("px", "") / 1.8}
+          y={cy + Number(cfg.textSize.replace("px", "")) / 1.8}
           textAnchor="middle"
           dominantBaseline="middle"
           fill="oklch(0.58 0.015 155)"
