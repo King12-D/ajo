@@ -46,22 +46,26 @@ export function computeScore(entries: Entry[]): ScoreBreakdown {
   const consistency = Math.min((entries.length / 30) * 100, 100)
 
   // 2. Revenue Trend: slope normalised to 0–100
-  const slope = revenueSlope(entries)
-  const avgRev = entries.reduce((s, e) => s + e.revenue, 0) / entries.length
+  const validEntries = entries.filter(e => e && typeof e.revenue === 'number');
+  if (validEntries.length === 0) return { consistency: 0, revenueTrend: 0, expenseDiscipline: 0, overall: 300, label: 'Building', trend: 'neutral' };
+
+  const slope = revenueSlope(validEntries)
+  const totalRevenue = validEntries.reduce((s, e) => s + (e.revenue || 0), 0)
+  const avgRev = totalRevenue / validEntries.length
   // +5% daily growth → 100, 0% → 50, negative → <50
   const slopeRatio = avgRev > 0 ? slope / avgRev : 0
   const revenueTrend = Math.max(0, Math.min(100, 50 + slopeRatio * 1000))
 
   // 3. Expense Discipline: avg profit margin
   const margins = entries.map(e => {
-    if (e.revenue === 0) return 0
-    return Math.max(0, 1 - e.expenses / e.revenue)
+    if (!e || e.revenue === 0) return 0
+    return Math.max(0, 1 - (e.expenses || 0) / e.revenue)
   })
-  const avgMargin = margins.reduce((s, m) => s + m, 0) / margins.length
+  const avgMargin = margins.reduce((s, m) => s + m, 0) / (margins.length || 1)
   const expenseDiscipline = Math.min(avgMargin * 150, 100)
 
   // 4. Confirmation bonus (confirmed entries = better data quality)
-  const confirmedPct = entries.filter(e => e.status === 'confirmed').length / entries.length
+  const confirmedPct = entries.filter(e => e && e.status === 'confirmed').length / (entries.length || 1)
   const confirmBonus = confirmedPct * 10
 
   // 5. Weighted overall

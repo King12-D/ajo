@@ -28,23 +28,23 @@ pub mod ajo {
         expense_discipline: u8,
     ) -> Result<()> {
         let profile = &mut ctx.accounts.trader_profile;
-        
+
         // Update the on-chain stats
         profile.score = score;
         profile.consistency = consistency;
         profile.revenue_trend = revenue_trend;
         profile.expense_discipline = expense_discipline;
-        
+
         Ok(())
     }
 
     /// Lender pays 0.01 SOL to the trader to query their score
     pub fn query_score_payment(ctx: Context<QueryScorePayment>) -> Result<()> {
         let amount: u64 = 10_000_000; // 0.01 SOL in lamports
-        
+
         // Execute the SOL transfer via System Program
         let cpi_context = CpiContext::new(
-            ctx.accounts.system_program.to_account_info(),
+            ctx.accounts.system_program.key(),
             system_program::Transfer {
                 from: ctx.accounts.lender.to_account_info(),
                 to: ctx.accounts.trader.to_account_info(),
@@ -77,7 +77,7 @@ pub struct InitTrader<'info> {
     )]
     pub trader_profile: Account<'info, TraderProfile>,
     /// CHECK: We only need the pubkey to seed the PDA
-    pub trader: AccountInfo<'info>,
+    pub trader: UncheckedAccount<'info>,
     #[account(mut)]
     pub payer: Signer<'info>, // Could be the trader themselves or the backend paying the fee
     pub system_program: Program<'info, System>,
@@ -100,8 +100,7 @@ pub struct QueryScorePayment<'info> {
     #[account(mut)]
     pub lender: Signer<'info>,
     /// CHECK: The trader receiving the 0.01 SOL
-    #[account(mut)]
-    pub trader: AccountInfo<'info>,
+    pub trader: UncheckedAccount<'info>,
     #[account(
         seeds = [b"profile", trader.key().as_ref()],
         bump = trader_profile.bump

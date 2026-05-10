@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Mic, Square, Play, Pause, X, CheckCircle2 } from "lucide-react";
+import { Mic, Square, Play, Pause, X, CheckCircle2, Loader2 } from "lucide-react";
 
 interface VoiceRecorderProps {
   onClose: () => void;
-  onSave: (audioBlob: Blob, transcript: string) => void;
+  onSave: (audioBlob: Blob) => Promise<void>;
 }
 
 const NUM_BARS = 28;
@@ -32,7 +32,7 @@ function WaveformBars({ active }: { active: boolean }) {
 
 export function VoiceRecorder({ onClose, onSave }: VoiceRecorderProps) {
   const [phase, setPhase] = useState<
-    "idle" | "recording" | "preview" | "saved"
+    "idle" | "recording" | "preview" | "processing" | "saved"
   >("idle");
   const [audioURL, setAudioURL] = useState<string | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -99,17 +99,21 @@ export function VoiceRecorder({ onClose, onSave }: VoiceRecorderProps) {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!audioChunksRef.current.length) return;
     const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-    const revenue = Math.floor(Math.random() * 5000) + 1000;
-    const expenses = Math.floor(revenue * 0.28);
-    const transcript = `Today I made ₦${revenue.toLocaleString()} in revenue with ₦${expenses.toLocaleString()} in expenses.`;
-    setPhase("saved");
-    setTimeout(() => {
-      onSave(blob, transcript);
-      onClose();
-    }, 1200);
+    setPhase("processing");
+    try {
+      await onSave(blob);
+      setPhase("saved");
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong processing your voice entry.");
+      setPhase("preview");
+    }
   };
 
   const reRecord = () => {
@@ -124,19 +128,21 @@ export function VoiceRecorder({ onClose, onSave }: VoiceRecorderProps) {
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={phase === "processing" ? undefined : onClose}
       />
 
       {/* Sheet */}
       <div className="relative z-10 w-full sm:max-w-md glass-card rounded-t-3xl sm:rounded-2xl p-8 shadow-2xl animate-fade-in-up">
         {/* Close */}
-        <button
-          id="voice-recorder-close"
-          onClick={onClose}
-          className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        {phase !== "processing" && (
+          <button
+            id="voice-recorder-close"
+            onClick={onClose}
+            className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
 
         {/* ── IDLE / RECORDING ── */}
         {(phase === "idle" || phase === "recording") && (
@@ -254,13 +260,26 @@ export function VoiceRecorder({ onClose, onSave }: VoiceRecorderProps) {
           </>
         )}
 
+        {/* ── PROCESSING ── */}
+        {phase === "processing" && (
+          <div className="flex flex-col items-center py-12 gap-5 animate-pulse">
+            <Loader2 className="w-16 h-16 text-accent animate-spin" />
+            <div className="text-center">
+              <h2 className="text-xl font-bold text-foreground">Analyzing Audio</h2>
+              <p className="text-sm text-muted-foreground mt-2">
+                Using AI to extract revenue & expenses...
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* ── SAVED ── */}
         {phase === "saved" && (
-          <div className="flex flex-col items-center py-8 gap-4 animate-fade-in-up">
+          <div className="flex flex-col items-center py-12 gap-4 animate-fade-in-up">
             <CheckCircle2 className="w-16 h-16 text-primary" />
             <h2 className="text-xl font-bold text-foreground">Entry Saved!</h2>
             <p className="text-sm text-muted-foreground text-center">
-              Your Ajo Score is being updated…
+              Your Ajo Score is being updated on-chain…
             </p>
           </div>
         )}

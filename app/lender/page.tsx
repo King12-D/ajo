@@ -13,6 +13,7 @@ import {
   TrendingDown,
   Activity,
   ArrowRight,
+  Loader2,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -24,69 +25,24 @@ import {
   AreaChart,
 } from "recharts";
 
-/* ── mock data ──────────────────────────────────────────────── */
+/* ── types ────────────────────────────────────────────────── */
 interface TraderProfile {
   walletAddress: string;
-  ajoScore: number;
-  consistency: number;
-  revenueTrend: number;
-  expenseDiscipline: number;
-  thirtyDayData: Array<{ date: string; revenue: number; expenses: number }>;
+  score: {
+    overall: number;
+    consistency: number;
+    revenueTrend: number;
+    expenseDiscipline: number;
+  };
+  chartData: Array<{ date: string; revenue: number }>;
+  entryCount: number;
 }
-
-function generateMockData(
-  baseRev: number,
-): TraderProfile["thirtyDayData"] {
-  const data = [];
-  const now = new Date();
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    // Deterministic mock data to avoid hydration mismatch
-    const variance = (i * 13) % 20; 
-    const rev = baseRev + (variance - 10) * (baseRev * 0.01);
-    data.push({
-      date: d.toLocaleDateString("en-GB", { month: "short", day: "numeric" }),
-      revenue: Math.floor(rev),
-      expenses: Math.floor(rev * 0.25),
-    });
-  }
-  return data;
-}
-
-const MOCK_TRADERS: Record<string, TraderProfile> = {
-  "8XKP3MNA": {
-    walletAddress: "8xKp...3mNa",
-    ajoScore: 742,
-    consistency: 88,
-    revenueTrend: 92,
-    expenseDiscipline: 85,
-    thirtyDayData: generateMockData(2000),
-  },
-  "7YLQ2POB": {
-    walletAddress: "7yLq...2pOb",
-    ajoScore: 615,
-    consistency: 65,
-    revenueTrend: 58,
-    expenseDiscipline: 72,
-    thirtyDayData: generateMockData(1200),
-  },
-  "9ZMR4QRC": {
-    walletAddress: "9zMr...4qRc",
-    ajoScore: 815,
-    consistency: 95,
-    revenueTrend: 96,
-    expenseDiscipline: 93,
-    thirtyDayData: generateMockData(4500),
-  },
-};
 
 /* ── component ──────────────────────────────────────────────── */
 export default function LenderDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedTrader, setSelectedTrader] = useState<TraderProfile | null>(
-    null,
-  );
+  const [selectedTrader, setSelectedTrader] = useState<TraderProfile | null>(null);
+  const [loading, setLoading] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<
     "idle" | "processing" | "success"
@@ -98,30 +54,50 @@ export default function LenderDashboard() {
     setMounted(true);
   }, []);
 
-  const handleSearch = () => {
-    const q = searchQuery.toUpperCase().replace(/\./g, "");
-    const foundKey = Object.keys(MOCK_TRADERS).find(
-      (k) => k.includes(q) || q.includes(k),
-    );
-    if (foundKey) {
-      setSelectedTrader(MOCK_TRADERS[foundKey]);
-      setScoreUnlocked(false);
-    } else {
-      setSelectedTrader(null);
-      alert("Trader not found. Try: 8xKp, 7yLq, or 9zMr");
+  const handleSearch = async () => {
+    if (!searchQuery) return;
+    setLoading(true);
+    setSelectedTrader(null);
+    setScoreUnlocked(false);
+
+    try {
+      const res = await fetch(`/api/lender/search?address=${searchQuery}`);
+      if (!res.ok) throw new Error("Trader not found");
+      const data = await res.json();
+      setSelectedTrader(data);
+    } catch (err) {
+      alert("Trader not found. Make sure you enter a valid wallet address.");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handlePaymentConfirm = () => {
+  const handlePaymentConfirm = async () => {
+    if (!selectedTrader) return;
     setPaymentStatus("processing");
-    setTimeout(() => {
+    
+    try {
+      // Real API call to log the payment and simulate the Solana tx
+      const res = await fetch("/api/lender/payment", {
+        method: "POST",
+        body: JSON.stringify({
+          lenderAddress: "Lender_Wallet_Mock",
+          traderAddress: selectedTrader.walletAddress,
+        }),
+      });
+      
+      if (!res.ok) throw new Error("Payment failed");
+
       setPaymentStatus("success");
       setTimeout(() => {
         setShowPaymentModal(false);
         setPaymentStatus("idle");
         setScoreUnlocked(true);
       }, 1500);
-    }, 2000);
+    } catch (err) {
+      alert("Transaction failed on Solana devnet.");
+      setPaymentStatus("idle");
+    }
   };
 
   if (!mounted) {
@@ -133,6 +109,7 @@ export default function LenderDashboard() {
       <Navigation />
 
       <main className="max-w-4xl mx-auto px-4 pb-20 pt-8 space-y-8">
+        {/* ── Search Header ── */}
         <div className="text-center max-w-2xl mx-auto mb-10">
           <h1 className="text-3xl font-black text-foreground mb-3">
             Lender Portal
@@ -147,7 +124,7 @@ export default function LenderDashboard() {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Enter trader wallet address (e.g. 8xKp...)"
+                placeholder="Enter trader wallet address..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -156,27 +133,11 @@ export default function LenderDashboard() {
             </div>
             <button
               onClick={handleSearch}
-              className="bg-accent text-accent-foreground px-8 py-4 rounded-xl font-bold hover:opacity-90 transition-opacity whitespace-nowrap shadow-lg shadow-accent/20"
+              disabled={loading}
+              className="bg-accent text-accent-foreground px-8 py-4 rounded-xl font-bold hover:opacity-90 transition-opacity whitespace-nowrap shadow-lg shadow-accent/20 flex items-center justify-center min-w-[120px]"
             >
-              Search
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Search"}
             </button>
-          </div>
-          <div className="flex gap-2 justify-center mt-3">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
-              Try:
-            </span>
-            {["8xKp", "7yLq", "9zMr"].map((t) => (
-              <button
-                key={t}
-                onClick={() => {
-                  setSearchQuery(t);
-                  setTimeout(() => handleSearch(), 100);
-                }}
-                className="text-[10px] text-accent hover:underline font-mono"
-              >
-                {t}
-              </button>
-            ))}
           </div>
         </div>
 
@@ -186,7 +147,7 @@ export default function LenderDashboard() {
               <div className="shrink-0 flex flex-col items-center">
                 {scoreUnlocked ? (
                   <AjoScore
-                    score={selectedTrader.ajoScore}
+                    score={selectedTrader.score.overall}
                     size="lg"
                     animated
                   />
@@ -225,17 +186,17 @@ export default function LenderDashboard() {
                     {[
                       {
                         label: "Consistency",
-                        val: selectedTrader.consistency,
+                        val: selectedTrader.score.consistency,
                         icon: <Activity className="w-4 h-4 text-accent" />,
                       },
                       {
                         label: "Revenue Trend",
-                        val: selectedTrader.revenueTrend,
+                        val: selectedTrader.score.revenueTrend,
                         icon: <TrendingUp className="w-4 h-4 text-primary" />,
                       },
                       {
                         label: "Expense Discipline",
-                        val: selectedTrader.expenseDiscipline,
+                        val: selectedTrader.score.expenseDiscipline,
                         icon: (
                           <TrendingDown className="w-4 h-4 text-secondary" />
                         ),
@@ -261,7 +222,7 @@ export default function LenderDashboard() {
                         </div>
                         <div className="w-full h-1.5 bg-muted rounded-full mt-3 overflow-hidden">
                           <div
-                            className="h-full bg-foreground rounded-full"
+                            className="h-full bg-foreground rounded-full transition-all duration-1000"
                             style={{ width: `${stat.val}%` }}
                           />
                         </div>
@@ -293,57 +254,30 @@ export default function LenderDashboard() {
                 <div className="flex items-center gap-2 mb-8">
                   <BarChart className="w-5 h-5 text-accent" />
                   <h3 className="font-bold text-lg text-foreground">
-                    30-Day Financial Trend
+                    Financial Trend History
                   </h3>
                 </div>
 
                 <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
-                      data={selectedTrader.thirtyDayData}
+                      data={selectedTrader.chartData}
                       margin={{ top: 10, right: 0, left: -20, bottom: 0 }}
                     >
                       <defs>
-                        <linearGradient
-                          id="colorRev"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop
-                            offset="5%"
-                            stopColor="oklch(0.76 0.19 75)"
-                            stopOpacity={0.3}
-                          />
-                          <stop
-                            offset="95%"
-                            stopColor="oklch(0.76 0.19 75)"
-                            stopOpacity={0}
-                          />
+                        <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="oklch(0.76 0.19 75)" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="oklch(0.76 0.19 75)" stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke="var(--border)"
-                        vertical={false}
-                      />
-                      <XAxis
-                        dataKey="date"
-                        stroke="oklch(0.58 0.015 155)"
-                        fontSize={11}
-                        tickLine={false}
-                        axisLine={false}
-                        dy={10}
-                      />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                      <XAxis dataKey="date" stroke="oklch(0.58 0.015 155)" fontSize={11} tickLine={false} axisLine={false} dy={10} />
                       <YAxis
                         stroke="oklch(0.58 0.015 155)"
                         fontSize={11}
                         tickLine={false}
                         axisLine={false}
-                        tickFormatter={(val) =>
-                          `₦${val >= 1000 ? (val / 1000).toFixed(0) + "k" : val}`
-                        }
+                        tickFormatter={(val) => `₦${val >= 1000 ? (val / 1000).toFixed(0) + "k" : val}`}
                       />
                       <Tooltip
                         contentStyle={{
@@ -351,16 +285,9 @@ export default function LenderDashboard() {
                           border: "1px solid oklch(0.28 0.025 155 / 0.6)",
                           borderRadius: "12px",
                           color: "var(--foreground)",
-                          boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.5)",
                         }}
-                        itemStyle={{
-                          color: "var(--foreground)",
-                          fontWeight: "bold",
-                        }}
-                        formatter={(val: number) => [
-                          `₦${val.toLocaleString()}`,
-                          "Revenue",
-                        ]}
+                        itemStyle={{ color: "var(--foreground)", fontWeight: "bold" }}
+                        formatter={(val: number) => [`₦${val.toLocaleString()}`, "Revenue"]}
                       />
                       <Area
                         type="monotone"
@@ -377,28 +304,28 @@ export default function LenderDashboard() {
             )}
           </div>
         ) : (
-          <div className="glass-card rounded-2xl p-12 text-center border border-border/60 max-w-2xl mx-auto mt-12">
-            <div className="w-20 h-20 bg-muted/50 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Search className="w-8 h-8 text-muted-foreground" />
+          !loading && (
+            <div className="glass-card rounded-2xl p-12 text-center border border-border/60 max-w-2xl mx-auto mt-12">
+              <div className="w-20 h-20 bg-muted/50 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Search className="w-8 h-8 text-muted-foreground" />
+              </div>
+              <p className="text-lg font-medium text-foreground mb-2">
+                No Trader Selected
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Search for a trader's wallet address above to view their financial identity.
+              </p>
             </div>
-            <p className="text-lg font-medium text-foreground mb-2">
-              No Trader Selected
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Search for a trader's wallet address above to view their financial
-              identity and Ajo Score.
-            </p>
-          </div>
+          )
         )}
       </main>
 
+      {/* ── Payment Modal ── */}
       {showPaymentModal && selectedTrader && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-            onClick={() =>
-              paymentStatus === "idle" && setShowPaymentModal(false)
-            }
+            onClick={() => paymentStatus === "idle" && setShowPaymentModal(false)}
           />
 
           <div className="relative z-10 w-full sm:max-w-sm glass-card rounded-t-3xl sm:rounded-2xl p-8 shadow-2xl animate-fade-in-up border border-border/60">
@@ -435,15 +362,11 @@ export default function LenderDashboard() {
                 <div className="space-y-3 mb-8">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">From</span>
-                    <span className="font-mono text-foreground">
-                      Your Wallet
-                    </span>
+                    <span className="font-mono text-foreground">Your Wallet</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">To Trader</span>
-                    <span className="font-mono text-foreground">
-                      {selectedTrader.walletAddress}
-                    </span>
+                    <span className="font-mono text-foreground">{selectedTrader.walletAddress}</span>
                   </div>
                 </div>
 
@@ -454,26 +377,7 @@ export default function LenderDashboard() {
                 >
                   {paymentStatus === "processing" ? (
                     <span className="flex items-center gap-2">
-                      <svg
-                        className="animate-spin -ml-1 mr-2 h-5 w-5 text-accent-foreground"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        ></circle>
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        ></path>
-                      </svg>
+                      <Loader2 className="w-5 h-5 animate-spin" />
                       Confirming on Solana...
                     </span>
                   ) : (

@@ -9,8 +9,11 @@ const WALLET = '8xKp...3mNa' // trader's wallet (mock — replace with real auth
 /** GET /api/entries — fetch all entries + live score */
 export async function GET() {
   try {
-    let trader = await getPrisma().trader.findUnique({
+    // Get or create trader
+    const trader = await getPrisma().trader.upsert({
       where: { walletAddress: WALLET },
+      create: { walletAddress: WALLET },
+      update: {},
       include: {
         entries: {
           orderBy: { date: 'desc' },
@@ -18,14 +21,6 @@ export async function GET() {
         },
       },
     })
-
-    if (!trader) {
-      // Auto-create trader on first visit
-      trader = await getPrisma().trader.create({
-        data: { walletAddress: WALLET },
-        include: { entries: true },
-      })
-    }
 
     const score = computeScore(trader.entries)
 

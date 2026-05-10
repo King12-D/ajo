@@ -14,6 +14,7 @@ export async function transcribeAudio(audioBlob: Blob): Promise<string> {
   // Example implementation using standard FormData upload for STT
   const formData = new FormData()
   formData.append('file', audioBlob, 'audio.webm')
+  formData.append('model_id', 'scribe_v1') // Required by ElevenLabs Scribe API
   
   // Note: ElevenLabs URL structure for STT might vary, using standard pattern
   const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
@@ -25,9 +26,11 @@ export async function transcribeAudio(audioBlob: Blob): Promise<string> {
   })
 
   if (!response.ok) {
-    throw new Error('Transcription failed')
+    const errorBody = await response.text().catch(() => 'No error body');
+    console.error('[ElevenLabs API Error]', response.status, errorBody);
+    throw new Error(`Transcription failed: ${response.status} ${errorBody}`);
   }
 
   const data = await response.json()
-  return data.text
+  return data.text || data.transcript || "";
 }

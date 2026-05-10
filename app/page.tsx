@@ -13,6 +13,7 @@ import {
   Clock,
   BarChart2,
   Wallet,
+  Loader2,
 } from "lucide-react";
 
 /* ── types ─────────────────────────────────────────────────── */
@@ -23,24 +24,11 @@ interface DailyEntry {
   status: "pending" | "confirmed";
 }
 
-/* ── 30-day mock data ───────────────────────────────────────── */
-function generate30Days(): DailyEntry[] {
-  const entries: DailyEntry[] = [];
-  const now = new Date();
-  for (let i = 0; i < 30; i++) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    // Use semi-deterministic values to avoid hydration mismatch if possible, 
-    // but useEffect is the safer bet for state population.
-    const rev = 1000 + (i * 123) % 3000; 
-    entries.push({
-      date: d.toISOString().split("T")[0],
-      revenue: rev,
-      expenses: Math.floor(rev * 0.3),
-      status: i % 4 === 0 ? "pending" : "confirmed",
-    });
-  }
-  return entries;
+interface ScoreBreakdown {
+  overall: number;
+  consistency: number;
+  revenueTrend: number;
+  expenseDiscipline: number;
 }
 
 /* ── helpers ────────────────────────────────────────────────── */
@@ -59,33 +47,85 @@ function fmtDate(iso: string) {
 /* ── component ──────────────────────────────────────────────── */
 export default function TraderDashboard() {
   const [showRecorder, setShowRecorder] = useState(false);
-  const [ajoScore, setAjoScore] = useState(742);
+  const [ajoScore, setAjoScore] = useState<ScoreBreakdown>({
+    overall: 300,
+    consistency: 0,
+    revenueTrend: 0,
+    expenseDiscipline: 0,
+  });
   const [entries, setEntries] = useState<DailyEntry[]>([]);
+  const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
 
-  // Fix hydration mismatch by populating random/mock data only after mount
-  useEffect(() => {
-    setEntries(generate30Days());
-    setMounted(true);
-  }, []);
-
-  const handleRecordingComplete = (_blob: Blob, _transcript: string) => {
-    const today = new Date().toISOString().split("T")[0];
-    const revenue = Math.floor(Math.random() * 4000) + 1000;
-    const newEntry: DailyEntry = {
-      date: today,
-      revenue,
-      expenses: Math.floor(revenue * 0.28),
-      status: "pending",
-    };
-    setEntries((prev) => [newEntry, ...prev.slice(0, 29)]);
-    setAjoScore((prev) => Math.min(Math.round(prev + Math.random() * 6), 850));
+  // Fetch real data from the API
+  const fetchData = async () => {
+    try {
+      const res = await fetch("/api/entries");
+      const data = await res.json();
+      if (data.entries) setEntries(data.entries);
+      if (data.score) setAjoScore(data.score);
+    } catch (err) {
+      console.error("Failed to fetch dashboard data:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const totalRevenue = entries.reduce((s, e) => s + e.revenue, 0);
-  const totalExpenses = entries.reduce((s, e) => s + e.expenses, 0);
+  useEffect(() => {
+    setMounted(true);
+    fetchData();
+  }, []);
+
+  const handleRecordingSave = async (blob: Blob) => {
+    // 1. Transcribe audio
+    const formData = new FormData();
+    formData.append("audio", blob, "audio.webm");
+
+    const transcribeRes = await fetch("/api/transcribe", {
+      method: "POST",
+      body: formData,
+    });
+    const { transcript } = await transcribeRes.json();
+
+    // 2. Extract entities
+    const extractRes = await fetch("/api/extract", {
+      method: "POST",
+      body: JSON.stringify({ transcript }),
+    });
+    const extractedData = await extractRes.json();
+
+    // 3. Save entry to DB
+    const entryRes = await fetch("/api/entries", {
+      method: "POST",
+      body: JSON.stringify({
+        revenue: extractedData.revenue,
+        expenses: extractedData.expenses,
+        transcript,
+      }),
+    });
+    const { entry, score } = await entryRes.json();
+
+    // 4. Update local state
+    setEntries((prev) => {
+      const filtered = prev.filter(e => e.date !== entry.date);
+      return [entry, ...filtered].slice(0, 30);
+    });
+    setAjoScore(score);
+
+    // 5. Trigger On-Chain Score Update (Oracle)
+    fetch("/api/score", {
+      method: "POST",
+      body: JSON.stringify({
+        traderAddress: "8xKp...3mNa", // Mock for now, replace with real pubkey
+        entries: [entry, ...entries],
+      }),
+    }).catch(console.error);
+  };
+
+  const totalRevenue = (entries || []).reduce((s, e) => s + (e?.revenue || 0), 0);
+  const totalExpenses = (entries || []).reduce((s, e) => s + (e?.expenses || 0), 0);
   const netProfit = totalRevenue - totalExpenses;
-  const confirmedDays = entries.filter((e) => e.status === "confirmed").length;
+  const confirmedDays = (entries || []).filter((e) => e?.status === "confirmed").length;
 
   if (!mounted) {
     return <div className="min-h-screen bg-background" />;
@@ -108,203 +148,176 @@ export default function TraderDashboard() {
           </div>
         </div>
 
-        {/* ── Score card ── */}
-        <div className="glass-card rounded-2xl p-6 text-center relative overflow-hidden">
-          {/* BG glow */}
-          <div className="absolute -top-10 left-1/2 -translate-x-1/2 w-64 h-64 bg-accent/5 rounded-full blur-3xl pointer-events-none" />
-
-          <p className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4">
-            Your Ajo Score
-          </p>
-
-          <div className="flex justify-center mb-4">
-            <AjoScore score={ajoScore} size="lg" animated />
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <Loader2 className="w-10 h-10 text-accent animate-spin" />
+            <p className="text-sm text-muted-foreground">Loading your financial identity...</p>
           </div>
+        ) : (
+          <>
+            {/* ── Score card ── */}
+            <div className="glass-card rounded-2xl p-6 text-center relative overflow-hidden">
+              <div className="absolute -top-10 left-1/2 -translate-x-1/2 w-64 h-64 bg-accent/5 rounded-full blur-3xl pointer-events-none" />
 
-          <p className="text-sm text-muted-foreground">
-            Financial Identity Score · Updated daily
-          </p>
+              <p className="text-xs font-semibold tracking-widest text-muted-foreground uppercase mb-4">
+                Your Ajo Score
+              </p>
 
-          {/* Mini breakdown pills */}
-          <div className="flex justify-center gap-3 mt-4 flex-wrap">
-            {[
-              { label: "Consistency", pct: 88 },
-              { label: "Revenue Trend", pct: 92 },
-              { label: "Expense Discipline", pct: 85 },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="flex flex-col items-center gap-1"
-              >
-                <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-accent rounded-full"
-                    style={{ width: `${item.pct}%` }}
-                  />
+              <div className="flex justify-center mb-4">
+                <AjoScore score={ajoScore?.overall || 300} size="lg" animated />
+              </div>
+
+              <p className="text-sm text-muted-foreground">
+                Financial Identity Score · Updated daily
+              </p>
+
+              <div className="flex justify-center gap-3 mt-4 flex-wrap">
+                {[
+                  { label: "Consistency", pct: ajoScore?.consistency || 0 },
+                  { label: "Revenue Trend", pct: ajoScore?.revenueTrend || 0 },
+                  { label: "Expense Discipline", pct: ajoScore?.expenseDiscipline || 0 },
+                ].map((item) => (
+                  <div key={item.label} className="flex flex-col items-center gap-1">
+                    <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-accent rounded-full transition-all duration-1000"
+                        style={{ width: `${item.pct}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">
+                      {item.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── CTA Record button ── */}
+            <button
+              id="record-today-btn"
+              onClick={() => setShowRecorder(true)}
+              className="relative w-full btn-gold-shimmer text-accent-foreground py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 hover:opacity-95 active:scale-[0.98] transition-all shadow-xl shadow-accent/20 overflow-hidden"
+            >
+              <span className="absolute inset-0 animate-pulse-ring rounded-2xl border-2 border-accent/40 pointer-events-none" />
+              <Mic className="w-6 h-6" />
+              Record Today
+            </button>
+
+            {/* ── Stats grid ── */}
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                {
+                  icon: <TrendingUp className="w-4 h-4 text-primary" />,
+                  label: "30-Day Revenue",
+                  value: fmt(totalRevenue),
+                  color: "text-primary",
+                },
+                {
+                  icon: <TrendingDown className="w-4 h-4 text-destructive" />,
+                  label: "30-Day Expenses",
+                  value: fmt(totalExpenses),
+                  color: "text-destructive",
+                },
+                {
+                  icon: <BarChart2 className="w-4 h-4 text-accent" />,
+                  label: "Net Profit",
+                  value: fmt(netProfit),
+                  color: "text-accent",
+                },
+                {
+                  icon: <CheckCircle2 className="w-4 h-4 text-primary" />,
+                  label: "Days Confirmed",
+                  value: `${confirmedDays} / ${entries.length || 30}`,
+                  color: "text-foreground",
+                },
+              ].map((s) => (
+                <div key={s.label} className="glass-card rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    {s.icon}
+                    <span className="text-xs text-muted-foreground">
+                      {s.label}
+                    </span>
+                  </div>
+                  <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
                 </div>
-                <span className="text-[10px] text-muted-foreground">
-                  {item.label}
+              ))}
+            </div>
+
+            {/* ── Activity feed ── */}
+            <div className="glass-card rounded-2xl overflow-hidden">
+              <div className="flex items-center gap-2 px-5 py-4 border-b border-border/60">
+                <Calendar className="w-4 h-4 text-accent" />
+                <h3 className="font-semibold text-foreground text-sm">
+                  Activity Feed
+                </h3>
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {entries.length} entries
                 </span>
               </div>
-            ))}
-          </div>
-        </div>
 
-        {/* ── CTA Record button ── */}
-        <button
-          id="record-today-btn"
-          onClick={() => setShowRecorder(true)}
-          className="relative w-full btn-gold-shimmer text-accent-foreground py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 hover:opacity-95 active:scale-[0.98] transition-all shadow-xl shadow-accent/20 overflow-hidden"
-        >
-          <span className="absolute inset-0 animate-pulse-ring rounded-2xl border-2 border-accent/40 pointer-events-none" />
-          <Mic className="w-6 h-6" />
-          Record Today
-        </button>
-
-        {/* ── Stats grid ── */}
-        {entries.length > 0 && (
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              {
-                icon: <TrendingUp className="w-4 h-4 text-primary" />,
-                label: "30-Day Revenue",
-                value: fmt(totalRevenue),
-                color: "text-primary",
-              },
-              {
-                icon: <TrendingDown className="w-4 h-4 text-destructive" />,
-                label: "30-Day Expenses",
-                value: fmt(totalExpenses),
-                color: "text-destructive",
-              },
-              {
-                icon: <BarChart2 className="w-4 h-4 text-accent" />,
-                label: "Net Profit",
-                value: fmt(netProfit),
-                color: "text-accent",
-              },
-              {
-                icon: <CheckCircle2 className="w-4 h-4 text-primary" />,
-                label: "Days Confirmed",
-                value: `${confirmedDays} / 30`,
-                color: "text-foreground",
-              },
-            ].map((s) => (
-              <div key={s.label} className="glass-card rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  {s.icon}
-                  <span className="text-xs text-muted-foreground">
-                    {s.label}
-                  </span>
+              {entries.length === 0 ? (
+                <div className="px-5 py-16 text-center">
+                  <Mic className="w-10 h-10 mx-auto text-muted-foreground/30 mb-4" />
+                  <p className="font-medium text-muted-foreground">
+                    No entries yet. Record your first sale!
+                  </p>
                 </div>
-                <p
-                  className={`text-xl font-bold ${s.color}`}
-                >
-                  {s.value}
-                </p>
-              </div>
-            ))}
-          </div>
+              ) : (
+                <div className="divide-y divide-border/40 max-h-[520px] overflow-y-auto">
+                  {entries.map((entry, idx) => {
+                    if (!entry) return null;
+                    const profit = (entry.revenue || 0) - (entry.expenses || 0);
+                    const isUp = profit > 0;
+                    return (
+                      <div
+                        key={idx}
+                        className="px-5 py-4 hover:bg-muted/30 transition-colors group"
+                      >
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="min-w-[90px]">
+                            <p className="text-xs font-semibold text-foreground">
+                              {fmtDate(entry.date)}
+                            </p>
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-medium mt-1 ${
+                              entry.status === "confirmed" ? "text-primary" : "text-muted-foreground"
+                            }`}>
+                              {entry.status === "confirmed" ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                              {entry.status === "confirmed" ? "Confirmed" : "Pending"}
+                            </span>
+                          </div>
+
+                          <div className="flex gap-5 flex-1">
+                            <div>
+                              <p className="text-[10px] text-muted-foreground">Revenue</p>
+                              <p className="text-sm font-bold text-primary">{fmt(entry.revenue)}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-muted-foreground">Expenses</p>
+                              <p className="text-sm font-bold text-muted-foreground">{fmt(entry.expenses)}</p>
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <p className="text-[10px] text-muted-foreground">Net</p>
+                            <p className={`text-sm font-bold ${isUp ? "text-accent" : "text-destructive"}`}>
+                              {isUp ? "+" : ""}{fmt(profit)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </>
         )}
-
-        {/* ── Activity feed ── */}
-        <div className="glass-card rounded-2xl overflow-hidden">
-          <div className="flex items-center gap-2 px-5 py-4 border-b border-border/60">
-            <Calendar className="w-4 h-4 text-accent" />
-            <h3 className="font-semibold text-foreground text-sm">
-              30-Day Activity
-            </h3>
-            <span className="ml-auto text-xs text-muted-foreground">
-              {entries.length} entries
-            </span>
-          </div>
-
-          {entries.length === 0 ? (
-            <div className="px-5 py-16 text-center">
-              <Mic className="w-10 h-10 mx-auto text-muted-foreground/30 mb-4" />
-              <p className="font-medium text-muted-foreground">
-                Start speaking your day to build your financial identity
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border/40 max-h-[520px] overflow-y-auto">
-              {entries.map((entry, idx) => {
-                const profit = entry.revenue - entry.expenses;
-                const isUp = profit > 0;
-                return (
-                  <div
-                    key={idx}
-                    className="px-5 py-4 hover:bg-muted/30 transition-colors group"
-                    style={{ animationDelay: `${idx * 0.04}s` }}
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      {/* Date */}
-                      <div className="min-w-[90px]">
-                        <p className="text-xs font-semibold text-foreground">
-                          {fmtDate(entry.date)}
-                        </p>
-                        {/* Status pill */}
-                        <span
-                          className={`inline-flex items-center gap-1 text-[10px] font-medium mt-1 ${
-                            entry.status === "confirmed"
-                              ? "text-primary"
-                              : "text-muted-foreground"
-                          }`}
-                        >
-                          {entry.status === "confirmed" ? (
-                            <CheckCircle2 className="w-3 h-3" />
-                          ) : (
-                            <Clock className="w-3 h-3" />
-                          )}
-                          {entry.status === "confirmed"
-                            ? "Confirmed"
-                            : "Pending"}
-                        </span>
-                      </div>
-
-                      {/* Revenue & expenses */}
-                      <div className="flex gap-5 flex-1">
-                        <div>
-                          <p className="text-[10px] text-muted-foreground">
-                            Revenue
-                          </p>
-                          <p className="text-sm font-bold text-primary">
-                            {fmt(entry.revenue)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-muted-foreground">
-                            Expenses
-                          </p>
-                          <p className="text-sm font-bold text-muted-foreground">
-                            {fmt(entry.expenses)}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Net */}
-                      <div className="text-right">
-                        <p className="text-[10px] text-muted-foreground">Net</p>
-                        <p
-                          className={`text-sm font-bold ${isUp ? "text-accent" : "text-destructive"}`}
-                        >
-                          {isUp ? "+" : ""}
-                          {fmt(profit)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
       </main>
 
       {showRecorder && (
         <VoiceRecorder
           onClose={() => setShowRecorder(false)}
-          onSave={handleRecordingComplete}
+          onSave={handleRecordingSave}
         />
       )}
     </div>
